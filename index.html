@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prime Birthdays</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 2rem 1rem; color: #1a1a1a; background: #fafafa; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .subtitle { color: #666; margin-bottom: 1.5rem; font-size: 0.9rem; }
+  label { display: block; font-weight: 600; margin-bottom: 0.25rem; font-size: 0.9rem; }
+  .help { color: #666; font-size: 0.8rem; margin-bottom: 0.5rem; }
+  textarea { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 0.9rem; resize: vertical; }
+  textarea:focus { outline: none; border-color: #4a7; }
+  .row { display: flex; gap: 1rem; align-items: end; margin-bottom: 1.5rem; }
+  .row > :first-child { flex: 1; }
+  input[type=number] { width: 5rem; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+  input[type=number]:focus { outline: none; border-color: #4a7; }
+  button { padding: 0.5rem 1.25rem; background: #4a7; color: #fff; border: none; border-radius: 4px; font-size: 0.9rem; cursor: pointer; }
+  button:hover { background: #396; }
+  .error { color: #c33; font-size: 0.85rem; margin-bottom: 1rem; }
+  #results { margin-top: 1rem; }
+  .range { background: #fff; border: 1px solid #e0e0e0; border-radius: 4px; padding: 0.75rem; margin-bottom: 0.5rem; }
+  .range .dates { font-weight: 600; }
+  .range .details { color: #555; font-size: 0.85rem; margin-top: 0.25rem; }
+  .none { color: #888; font-style: italic; }
+  .summary { font-weight: 600; margin-bottom: 0.75rem; color: #333; }
+</style>
+</head>
+<body>
+
+<h1>Prime Birthdays</h1>
+<p class="subtitle">Find when everyone in a group is a prime number age</p>
+
+<label for="people">People</label>
+<p class="help">One per line: <code>YYYY-MM-DD</code> or <code>Name, YYYY-MM-DD</code></p>
+<textarea id="people" rows="5" spellcheck="false">Alice, 1983-03-17
+Bob, 1984-12-20
+Carol, 1953-08-14</textarea>
+
+<div class="row">
+  <div>
+    <label for="years">Years forward</label>
+    <input type="number" id="years" value="100" min="1" max="500">
+  </div>
+  <button onclick="run()">Find</button>
+</div>
+
+<div id="error" class="error"></div>
+<div id="results"></div>
+
+<script>
+function isPrime(n) {
+  if (n < 2) return false;
+  if (n < 4) return true;
+  if (n % 2 === 0 || n % 3 === 0) return false;
+  for (let i = 5; i * i <= n; i += 6)
+    if (n % i === 0 || n % (i + 2) === 0) return false;
+  return true;
+}
+
+function ageOn(birthday, d) {
+  let years = d.getFullYear() - birthday.getFullYear();
+  if (d.getMonth() < birthday.getMonth() ||
+      (d.getMonth() === birthday.getMonth() && d.getDate() < birthday.getDate()))
+    years--;
+  return years;
+}
+
+function fmt(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function addDays(d, n) {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+function parsePeople(text) {
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  return lines.map((line, i) => {
+    const parts = line.split(',').map(s => s.trim());
+    let name, dateStr;
+    if (parts.length >= 2) {
+      name = parts[0];
+      dateStr = parts[1];
+    } else {
+      dateStr = parts[0];
+      name = `Person ${i + 1}`;
+    }
+    const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) throw new Error(`Invalid date: "${dateStr}"`);
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (isNaN(d.getTime())) throw new Error(`Invalid date: "${dateStr}"`);
+    return { name, birthday: d };
+  });
+}
+
+function run() {
+  const errEl = document.getElementById('error');
+  const resEl = document.getElementById('results');
+  errEl.textContent = '';
+  resEl.innerHTML = '';
+
+  let people;
+  try {
+    people = parsePeople(document.getElementById('people').value);
+  } catch (e) {
+    errEl.textContent = e.message;
+    return;
+  }
+
+  if (people.length === 0) {
+    errEl.textContent = 'Enter at least one person.';
+    return;
+  }
+
+  const yearsForward = parseInt(document.getElementById('years').value) || 100;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(today);
+  end.setFullYear(end.getFullYear() + yearsForward);
+
+  const ranges = [];
+  let rangeStart = null;
+  let day = new Date(today);
+
+  while (day <= end) {
+    const allPrime = people.every(p => isPrime(ageOn(p.birthday, day)));
+    if (allPrime && !rangeStart) {
+      rangeStart = new Date(day);
+    } else if (!allPrime && rangeStart) {
+      ranges.push({ start: rangeStart, end: addDays(day, -1) });
+      rangeStart = null;
+    }
+    day = addDays(day, 1);
+  }
+  if (rangeStart) ranges.push({ start: rangeStart, end: end });
+
+  if (ranges.length === 0) {
+    resEl.innerHTML = '<p class="none">No periods found.</p>';
+    return;
+  }
+
+  let html = `<p class="summary">${ranges.length} period${ranges.length > 1 ? 's' : ''} found</p>`;
+  for (const r of ranges) {
+    const days = Math.round((r.end - r.start) / 86400000) + 1;
+    const ages = people.map(p => {
+      const a0 = ageOn(p.birthday, r.start);
+      const a1 = ageOn(p.birthday, r.end);
+      return `${p.name}: ${a0 === a1 ? a0 : a0 + '–' + a1}`;
+    });
+    html += `<div class="range">
+      <div class="dates">${fmt(r.start)} → ${fmt(r.end)}</div>
+      <div class="details">${days} days · ${ages.join(', ')}</div>
+    </div>`;
+  }
+  resEl.innerHTML = html;
+}
+
+run();
+</script>
+
+</body>
+</html>
